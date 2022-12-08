@@ -1,5 +1,5 @@
 Author : Marc Duclusaud \
-Contact : marc.duclusaud@u-bordeaux.fr \
+Contact : marc.duclusaud@u-bordeaux.fr 
 
 -- English -- \
 The file sequence_identifier.py allows to identify within the gene placed in file gene.txt every sequence of codons characterized by one or more beginnings, one or more ends and a range of length. These parameters are modifiable at the beginning of the file sequence_identifier.py.
