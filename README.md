@@ -1,18 +1,19 @@
 Author : Marc Duclusaud \
 Contact : marc.duclusaud@u-bordeaux.fr 
 
+# Deaminase Target Identifier (DTI)
 
-# Description
+## Description
 
 This package is a tool to identify possible targets of a deaminase in a set of sequences of nucleotides. The tool identify target codons in proximity with PAMs (Protospacer Adjacent Motifs) in the sequences. The tool also checks the presence of off-targets in a genome file.
 
-# Installation
+## Installation
 
 ```bash
 pip install tqdm os
 ```
 
-# Usage
+## Usage
 
 Create a folder in the data repository and place the fasta and genome files in it. The arborescence should look like this:
 
@@ -35,6 +36,6 @@ Finally run the following command:
 python identifier.py
 ```
 
-# Output
+## Output
 
 The output is a text result file created in the folder containing the fasta and genome files. It contains for each entry of the fasta file the sequences of nucleotides identified as possible targets, as well as the potential off-targets found in the genome file.
