@@ -1,8 +1,40 @@
 Author : Marc Duclusaud \
 Contact : marc.duclusaud@u-bordeaux.fr 
 
--- English -- \
-The file sequence_identifier.py allows to identify within the gene placed in file gene.txt every sequence of codons characterized by one or more beginnings, one or more ends and a range of length. These parameters are modifiable at the beginning of the file sequence_identifier.py.
 
--- Français -- \
-Le fichier sequence_identifier.py permet d'identifier au sein du gène placé dans le fichier gene.txt toutes les séquences de codons caractérisées par un ou plusieurs débuts, une ou plusieurs fins et une plage de longueur. Ces paramètres sont modifiable au début du fichier sequence_identifier.py.
+# Description
+
+This package is a tool to identify possible targets of a deaminase in a set of sequences of nucleotides. The tool identify target codons in proximity with PAMs (Protospacer Adjacent Motifs) in the sequences. The tool also checks the presence of off-targets in a genome file.
+
+# Installation
+
+```bash
+pip install tqdm os
+```
+
+# Usage
+
+Create a folder in the data repository and place the fasta and genome files in it. The arborescence should look like this:
+
+```
+data/
+  example/
+    example.fasta  # fasta file containing the sequences of nucleotides to be identified
+    example.fa     # genome file to check the presence of off-targets
+```
+
+Then update the identification parameters in the file `identifier.py`. The parameters are:
+- **targets** : target codons for the deaminase with the index of the target nucleotide in the codon
+- **pams** : PAMs (Protospacer Adjacent Motifs)
+- **deaminase_window** : window for the nucleotide targetted by the deaminase before the PAM
+- **concordance_threshold** : threshold of concordance for a sequence to be considered as an off-target
+
+Finally run the following command:
+
+```bash
+python identifier.py
+```
+
+# Output
+
+The output is a text result file created in the folder containing the fasta and genome files. It contains for each entry of the fasta file the sequences of nucleotides identified as possible targets, as well as the potential off-targets found in the genome file.
