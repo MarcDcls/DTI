@@ -9,8 +9,10 @@ This package is a tool to identify possible targets of a deaminase in a set of s
 
 ## Installation
 
+Installing the module tqdm allows to vizualise the execution in the terminal:
+
 ```bash
-pip install tqdm os
+pip install tqdm
 ```
 
 ## Usage
