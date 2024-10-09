@@ -1,6 +1,10 @@
 import os
-import tqdm
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable, *args, **kwargs):
+        return iterable
 
 ##################################### PARAMETERS #####################################
 
@@ -132,7 +136,7 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
         else:
             print(text)
 
-    for i in tqdm.tqdm(range(len(fasta)//2)):
+    for i in tqdm(range(len(fasta)//2)):
         write_output(fasta[i*2])
         write_output("")
 
