@@ -31,6 +31,9 @@ Then update the identification parameters in the file `identifier.py`. The param
 - **pams** : PAMs (Protospacer Adjacent Motifs)
 - **deaminase_window** : window for the nucleotide targetted by the deaminase before the PAM
 - **concordance_threshold** : threshold of concordance for a sequence to be considered as an off-target
+- **allowed_mismatches** : number of mismatches allowed in an off-target
+- **allowed_gaps** : number of gaps allowed in an off-target
+
 
 Finally run the following command:
 
@@ -41,3 +44,5 @@ python identifier.py
 ## Output
 
 The output is a text result file created in the folder containing the fasta and genome files. It contains for each entry of the fasta file the sequences of nucleotides identified as possible targets, as well as the potential off-targets found in the genome file.
+
+Note: In an off-target, the mismatches are indicated by "*" and the gaps by "-".

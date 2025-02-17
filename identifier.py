@@ -24,6 +24,12 @@ deaminase_window = [15, 21]
 # Threshold of concordance for a sequence to be considered as an off-target
 concordance_threshold = 13
 
+# Number of missmatch allowed in an off-target
+allowed_mismatches = 1
+
+# Number of gaps allowed in an off-target
+allowed_gaps = 1
+
 ######################################################################################
 
 
@@ -61,8 +67,32 @@ def find_sequences(string: str, targets: list, pams: list, deaminase_window: lis
                                                 "sequence": string[i*3:i*3+j+3]})
     return results
 
+def step_off_target(off_targets, target, string, last_index, min_concordance, max_mismatches, max_gaps, concordance = 0, mismatches = 0, gaps = 0, result = ""):
+    if len(string) == 0 or len(target) == 0:
+        if concordance >= min_concordance and result[0] != "*" and result[0] != "-":
+            off_targets.append({"index": [last_index-len(result), last_index],
+                                "concordance": concordance,
+                                "sequence": result,
+                                "mismatches": mismatches,
+                                "gaps": gaps})
+        return
+    
+    if target[-1] == string[-1]:
+        step_off_target(off_targets, target[:-1], string[:-1], last_index, min_concordance, max_mismatches, max_gaps, concordance + 1, mismatches, gaps, target[-1] + result)
+    else:
+        if mismatches < max_mismatches:
+            step_off_target(off_targets, target[:-1], string[:-1], last_index, min_concordance, max_mismatches, max_gaps, concordance, mismatches + 1, gaps, "*" + result)
+        if gaps < max_gaps:
+            step_off_target(off_targets, target, string[:-1], last_index, min_concordance, max_mismatches, max_gaps, concordance, mismatches, gaps + 1, "-" + result)
+        
+        if concordance >= min_concordance and result[0] != "*" and result[0] != "-":
+            off_targets.append({"index": [last_index-len(result), last_index],
+                                "concordance": concordance,
+                                "sequence": result,
+                                "mismatches": mismatches,
+                                "gaps": gaps})
 
-def check_off_target(sequence: dict, genome: str, concordance_threshold: int):
+def check_off_target(sequence: dict, genome: str, concordance_threshold: int, allowed_mismatches: int):
     """Check if the sequence has off-targets in the genome sequence.
 
     Args:
@@ -85,22 +115,12 @@ def check_off_target(sequence: dict, genome: str, concordance_threshold: int):
             if genome[i+k] != sequence["pam"][k]:
                 break
             if k == 2:
-                concordance = 0
-                for j in range(sequence_length-3):
-                    if i-j-1 < 0:
-                        break
-                    if genome[i-j-1] == sequence["sequence"][sequence_length-j-4]:
-                        concordance += 1
-                    else:
-                        break
-                if concordance >= concordance_threshold:
-                    off_targets.append({"index": i-sequence_length+3,
-                                        "concordance": concordance,
-                                        "sequence": genome[i-sequence_length+3:i+3]})
+                step_off_target(off_targets, sequence["sequence"][:-3], genome[i-sequence_length+3:i], i, concordance_threshold, allowed_mismatches, allowed_gaps, result=genome[i:i+3])
+
+
     return off_targets
 
-
-def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: bool, targets: list, pams: list, deaminase_window: list, concordance_threshold: int):
+def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: bool, targets: list, pams: list, deaminase_window: list, concordance_threshold: int, allowed_mismatches: int):
     """Analyse a fasta file to find the possible sequences, excluding the off-targets.
 
     Args:
@@ -129,6 +149,8 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
     file_g = open(os.path.join(dir_path, genome_file), "r")
     genome = file_g.read()
     genome = "".join(genome.split("\n")[1:])
+    CI_genome = get_CI_sequence(genome)
+    size_genome = len(genome)
 
     def write_output(text):
         if save:
@@ -142,6 +164,7 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
 
         sample = fasta[i*2+1]
         sequences = find_sequences(sample, targets, pams, deaminase_window)
+
         for j, sequence in enumerate(sequences):
             write_output(f"Sequence {j+1}: " + sequence["sequence"])
             write_output("    PAM: " + sequence["pam"])
@@ -149,24 +172,38 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
             write_output("    Index in FASTA sample: " + str(sequence["index"]))
             write_output("")
 
-            off_targets = check_off_target(sequence, genome, concordance_threshold)
+            off_targets = check_off_target(sequence, genome, concordance_threshold, allowed_mismatches)
             replicas = []
             for off_target in off_targets[:]:
                 if off_target["sequence"] == sequence["sequence"]:
                     replicas.append(off_target)
                     off_targets.remove(off_target)
 
-            write_output("    Number of exact replica: " + str(len(replicas)))
+            CI_off_targets = check_off_target(sequence, CI_genome, concordance_threshold, allowed_mismatches)
+            CI_replicas = []
+            for CI_off_target in CI_off_targets[:]:
+                if CI_off_target["sequence"] == sequence["sequence"]:
+                    CI_replicas.append(CI_off_target)
+                    CI_off_targets.remove(CI_off_target)
+
+            write_output("    Number of exact replica: " + str(len(replicas) + len(CI_replicas)))
             for replica in replicas:
-                write_output("        Index in genome: " + str(replica["index"]))
+                write_output("        Index in genome main strand: " + str(replica["index"][0]) + " to " + str(replica["index"][1]))
+            for CI_replica in CI_replicas:
+                write_output("        Index in genome secondary strand: " + str(size_genome - CI_replica["index"][0]) + " to " + str(size_genome - CI_replica["index"][1]))
             write_output("")
             
-            write_output("    Number of off-targets: " + str(len(off_targets)))
+            write_output("    Number of off-targets: " + str(len(off_targets) + len(CI_off_targets)))
             write_output("")
             for off_target in off_targets:
                 write_output("        Off-target sequence: " + off_target["sequence"])
                 write_output("        Concordance: " + str(off_target["concordance"]))
-                write_output("        Index in genome: " + str(off_target["index"]))
+                write_output("        Index in genome main strand: " + str(off_target["index"][0]) + " to " + str(off_target["index"][1]))
+                write_output("")
+            for CI_off_target in CI_off_targets:
+                write_output("        Off-target sequence: " + CI_off_target["sequence"])
+                write_output("        Concordance: " + str(CI_off_target["concordance"]))
+                write_output("        Index in genome secondary strand: " + str(size_genome - CI_off_target["index"][0]) + " to " + str(size_genome - CI_off_target["index"][1]))
                 write_output("")
 
         write_output("---------------------------------------------")
@@ -176,6 +213,36 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
     if save:
         output.close()
 
+def get_CI_sequence(sequence: str):
+    """Get the complementary inverse sequence of a DNA sequence.
+
+    Args:
+        sequence (str): DNA sequence
+
+    Returns:
+        str: complementary inverse DNA sequence
+    """
+    complementary = ""
+    for nucleotide in sequence:
+        if nucleotide == "A":
+            complementary += "T"
+        elif nucleotide == "a":
+            complementary += "t"
+        elif nucleotide == "T":
+            complementary += "A"
+        elif nucleotide == "t":
+            complementary += "a"
+        elif nucleotide == "C":
+            complementary += "G"
+        elif nucleotide == "c":
+            complementary += "g"
+        elif nucleotide == "G":
+            complementary += "C"
+        elif nucleotide == "g":
+            complementary += "c"
+        else:
+            complementary += "N"
+    return complementary[::-1]
 
 if __name__ == "__main__":
 
@@ -188,8 +255,8 @@ if __name__ == "__main__":
             genome_files = [file for file in os.listdir(dir_path) if file.endswith(".fa")]
             
             # Repository already analysed
-            if len(results_files) == 1:
-                continue
+            # if len(results_files) == 1:
+            #     continue
 
             # Check if the repository is correctly formatted
             if len(fasta_files) != 1 or len(genome_files) != 1:
@@ -197,5 +264,5 @@ if __name__ == "__main__":
                 break
 
             print(f"Analyzing {dir}...")
-            analyse_fasta_file(dir_path, fasta_files[0], genome_files[0], True, targets, pams, deaminase_window, concordance_threshold)
+            analyse_fasta_file(dir_path, fasta_files[0], genome_files[0], True, targets, pams, deaminase_window, concordance_threshold, allowed_mismatches)
             print(f"{dir} analysed !")
