@@ -133,12 +133,7 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
         deaminase_window (list): upper and lower bounds of the deaminase window
         concordance_threshold (int): threshold of concordance for a sequence to be considered as an off-target
     """
-    # Open the output file if save is True
-    if save:
-        filename = fasta_file[:-6]
-        output = open(dir_path + "/results_" + filename + ".txt", "w")
-    else:
-        output = None
+    buffer = ""
 
     # Open the fasta file
     file_f = open(os.path.join(dir_path, fasta_file), "r")
@@ -152,25 +147,26 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
     CI_genome = get_CI_sequence(genome)
     size_genome = len(genome)
 
-    def write_output(text):
-        if save:
-            output.write(text + "\n")
-        else:
-            print(text)
-
+    # Analyse the fasta file
+    nb_KO = 0
+    nb_targets = 0
     for i in tqdm(range(len(fasta)//2)):
-        write_output(fasta[i*2])
-        write_output("")
+        buffer += fasta[i*2] + "\n\n"
 
         sample = fasta[i*2+1]
         sequences = find_sequences(sample, targets, pams, deaminase_window)
 
+        buffer += f"Number of potential targets found: {len(sequences)}\n\n"
+        nb_targets += len(sequences)
+
+        if len(sequences) > 0:
+            nb_KO += 1
+
         for j, sequence in enumerate(sequences):
-            write_output(f"Sequence {j+1}: " + sequence["sequence"])
-            write_output("    PAM: " + sequence["pam"])
-            write_output("    Target: " + sequence["target"][0])
-            write_output("    Index in FASTA sample: " + str(sequence["index"]))
-            write_output("")
+            buffer += f"Target {j+1}: {sequence['sequence']}\n"
+            buffer += f"    PAM: {sequence['pam']}\n"
+            buffer += f"    Target: {sequence['target'][0]}\n"
+            buffer += f"    Index in FASTA sample: {sequence['index']}\n\n"
 
             off_targets = check_off_target(sequence, genome, concordance_threshold, allowed_mismatches)
             replicas = []
@@ -186,32 +182,41 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
                     CI_replicas.append(CI_off_target)
                     CI_off_targets.remove(CI_off_target)
 
-            write_output("    Number of exact replica: " + str(len(replicas) + len(CI_replicas)))
+            buffer += f"    Number of exact replica: {len(replicas) + len(CI_replicas)}\n\n"
             for replica in replicas:
-                write_output("        Index in genome main strand: " + str(replica["index"][0]) + " to " + str(replica["index"][1]))
+                buffer += f"        Index in genome main strand: {replica['index'][0]} to {replica['index'][1]}\n"
             for CI_replica in CI_replicas:
-                write_output("        Index in genome secondary strand: " + str(size_genome - CI_replica["index"][0]) + " to " + str(size_genome - CI_replica["index"][1]))
-            write_output("")
+                buffer += f"        Index in genome secondary strand: {size_genome - CI_replica['index'][0]} to {size_genome - CI_replica['index'][1]}\n"
+            buffer += "\n"
             
-            write_output("    Number of off-targets: " + str(len(off_targets) + len(CI_off_targets)))
-            write_output("")
+            buffer += f"    Number of off-targets: {len(off_targets) + len(CI_off_targets)}\n\n"
             for off_target in off_targets:
-                write_output("        Off-target sequence: " + off_target["sequence"])
-                write_output("        Concordance: " + str(off_target["concordance"]))
-                write_output("        Index in genome main strand: " + str(off_target["index"][0]) + " to " + str(off_target["index"][1]))
-                write_output("")
+                buffer += f"        Off-target sequence: {off_target['sequence']}\n"
+                buffer += f"        Concordance: {off_target['concordance']}\n"
+                buffer += f"        Index in genome main strand: {off_target['index'][0]} to {off_target['index'][1]}\n\n"
             for CI_off_target in CI_off_targets:
-                write_output("        Off-target sequence: " + CI_off_target["sequence"])
-                write_output("        Concordance: " + str(CI_off_target["concordance"]))
-                write_output("        Index in genome secondary strand: " + str(size_genome - CI_off_target["index"][0]) + " to " + str(size_genome - CI_off_target["index"][1]))
-                write_output("")
+                buffer += f"        Off-target sequence: {CI_off_target['sequence']}\n"
+                buffer += f"        Concordance: {CI_off_target['concordance']}\n"
+                buffer += f"        Index in genome secondary strand: {size_genome - CI_off_target['index'][0]} to {size_genome - CI_off_target['index'][1]}\n\n"
 
-        write_output("---------------------------------------------")
-        write_output("")
+        buffer += "---------------------------------------------\n\n"
 
-    # Close the output file if save is True
+    # Write statistics at the beginning of the file
+    tmp = buffer
+    buffer = f"Number of KO: {nb_KO}/{len(fasta)//2} - {round(nb_KO/(len(fasta)//2)*100, 2)}%\n"
+    buffer += f"Number of potential targets found among all genes: {nb_targets}\n\n"
+    buffer += "---------------------------------------------\n\n"
+    buffer += tmp
+
+    # Printing or saving the results
     if save:
+        filename = fasta_file[:-6]
+        output = open(dir_path + "/results_" + filename + ".txt", "w")
+        output.write(buffer)
         output.close()
+    else:
+        print(buffer)
+
 
 def get_CI_sequence(sequence: str):
     """Get the complementary inverse sequence of a DNA sequence.
@@ -255,8 +260,8 @@ if __name__ == "__main__":
             genome_files = [file for file in os.listdir(dir_path) if file.endswith(".fa")]
             
             # Repository already analysed
-            # if len(results_files) == 1:
-            #     continue
+            if len(results_files) == 1:
+                continue
 
             # Check if the repository is correctly formatted
             if len(fasta_files) != 1 or len(genome_files) != 1:
