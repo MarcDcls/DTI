@@ -1,4 +1,6 @@
 import os
+import time
+from multiprocessing import Process, Queue, current_process, freeze_support
 
 try:
     from tqdm import tqdm
@@ -29,6 +31,9 @@ allowed_mismatches = 1
 
 # Number of gaps allowed in an off-target
 allowed_gaps = 1
+
+# Number of processes to use for the identification
+nb_processes = 10
 
 ######################################################################################
 
@@ -124,7 +129,7 @@ def check_off_target(sequence: dict, genome: str, concordance_threshold: int, al
 
     return off_targets
 
-def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: bool, targets: list, pams: list, deaminase_window: list, concordance_threshold: int, allowed_mismatches: int):
+def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: bool, targets: list, pams: list, deaminase_window: list, concordance_threshold: int, allowed_mismatches: int, nb_processes: int = 1):
     """Analyse a fasta file to find the possible sequences, excluding the off-targets.
 
     Args:
@@ -137,90 +142,59 @@ def analyse_fasta_file(dir_path: str, fasta_file: str, genome_file: str, save: b
         deaminase_window (list): upper and lower bounds of the deaminase window
         concordance_threshold (int): threshold of concordance for a sequence to be considered as an off-target
     """
-    buffer = ""
-
     # Open the fasta file
     file_f = open(os.path.join(dir_path, fasta_file), "r")
     fasta = file_f.read()
     fasta = fasta.split("\n")
+    file_f.close()
 
     # Open the genome file and format it
     file_g = open(os.path.join(dir_path, genome_file), "r")
     genome = file_g.read()
     genome = "".join(genome.split("\n")[1:])
     CI_genome = get_CI_sequence(genome)
-    size_genome = len(genome)
+    file_g.close()
 
-    # Analyse the fasta file
+    # Queues for the multiprocessing
+    inputs = Queue()
+    for i in range(len(fasta)//2):
+        inputs.put((i, fasta[i*2], fasta[i*2+1], genome, CI_genome, targets, pams, deaminase_window, concordance_threshold, allowed_mismatches))
+    outputs = Queue()
+
+    # Start processes
+    for i in range(nb_processes):
+        Process(target=worker, args=(inputs, outputs)).start()
+
+    # Process the FASTA entries
+    buffers = ["" for _ in range(len(fasta)//2)]
     nb_KO = 0
     nb_targets = 0
     for i in tqdm(range(len(fasta)//2)):
-        buffer += fasta[i*2] + "\n\n"
-
-        sample = fasta[i*2+1]
-        sequences = find_sequences(sample, targets, pams, deaminase_window)
-
-        buffer += f"Number of potential targets found: {len(sequences)}\n\n"
-        nb_targets += len(sequences)
-
-        if len(sequences) > 0:
+        id, entry_targets, entry_buffer = outputs.get()
+        buffers[id] = entry_buffer
+        nb_targets += entry_targets
+        if entry_targets > 0:
             nb_KO += 1
 
-        for j, sequence in enumerate(sequences):
-            buffer += f"Target {j+1}: {sequence['sequence']}\n"
-            buffer += f"    PAM: {sequence['pam']}\n"
-            buffer += f"    Target: {sequence['target'][0]}\n"
-            buffer += f"    Index in FASTA sample: {sequence['index']}\n\n"
-
-            off_targets = check_off_target(sequence, genome, concordance_threshold, allowed_mismatches)
-            replicas = []
-            for off_target in off_targets[:]:
-                if off_target["sequence"] == sequence["sequence"]:
-                    replicas.append(off_target)
-                    off_targets.remove(off_target)
-
-            CI_off_targets = check_off_target(sequence, CI_genome, concordance_threshold, allowed_mismatches)
-            CI_replicas = []
-            for CI_off_target in CI_off_targets[:]:
-                if CI_off_target["sequence"] == sequence["sequence"]:
-                    CI_replicas.append(CI_off_target)
-                    CI_off_targets.remove(CI_off_target)
-
-            buffer += f"    Number of exact replica: {len(replicas) + len(CI_replicas)}\n\n"
-            for replica in replicas:
-                buffer += f"        Index in genome main strand: {replica['index'][0]} to {replica['index'][1]}\n"
-            for CI_replica in CI_replicas:
-                buffer += f"        Index in genome secondary strand: {size_genome - CI_replica['index'][0]} to {size_genome - CI_replica['index'][1]}\n"
-            buffer += "\n"
-            
-            buffer += f"    Number of off-targets: {len(off_targets) + len(CI_off_targets)}\n\n"
-            for off_target in off_targets:
-                buffer += f"        Off-target sequence: {off_target['sequence']}\n"
-                buffer += f"        Concordance: {off_target['concordance']}\n"
-                buffer += f"        Index in genome main strand: {off_target['index'][0]} to {off_target['index'][1]}\n\n"
-            for CI_off_target in CI_off_targets:
-                buffer += f"        Off-target sequence: {CI_off_target['sequence']}\n"
-                buffer += f"        Concordance: {CI_off_target['concordance']}\n"
-                buffer += f"        Index in genome secondary strand: {size_genome - CI_off_target['index'][0]} to {size_genome - CI_off_target['index'][1]}\n\n"
-
-        buffer += "---------------------------------------------\n\n"
-
-    # Write statistics at the beginning of the file
-    tmp = buffer
-    buffer = f"Number of KO: {nb_KO}/{len(fasta)//2} - {round(nb_KO/(len(fasta)//2)*100, 2)}%\n"
-    buffer += f"Number of potential targets found among all genes: {nb_targets}\n\n"
-    buffer += "---------------------------------------------\n\n"
-    buffer += tmp
+    # Write the output
+    result = f"Number of KO: {nb_KO}/{len(fasta)//2} - {round(nb_KO/(len(fasta)//2)*100, 2)}%\n"
+    result += f"Number of potential targets found among all genes: {nb_targets}\n\n"
+    result += "---------------------------------------------\n\n"
+    for str in buffers:
+        result += str
 
     # Printing or saving the results
     if save:
         filename = fasta_file[:-6]
         output = open(dir_path + "/results_" + filename + ".txt", "w")
-        output.write(buffer)
+        output.write(result)
         output.close()
     else:
-        print(buffer)
+        print(result)
 
+    # Tell child processes to stop
+    for i in range(nb_processes):
+        inputs.put('STOP')
 
 def get_CI_sequence(sequence: str):
     """Get the complementary inverse sequence of a DNA sequence.
@@ -253,6 +227,60 @@ def get_CI_sequence(sequence: str):
             complementary += "N"
     return complementary[::-1]
 
+def worker(input, output):
+    for args in iter(input.get, 'STOP'):
+        result = process_entry(*args)
+        output.put(result)
+
+def process_entry(id, entry_name, sample, genome, CI_genome, targets, pams, deaminase_window, concordance_threshold, allowed_mismatches):
+    buffer = entry_name + "\n\n"
+
+    sequences = find_sequences(sample, targets, pams, deaminase_window)
+
+    buffer += f"Number of potential targets found: {len(sequences)}\n\n"
+    size_genome = len(genome)
+
+    for j, sequence in enumerate(sequences):
+        buffer += f"Target {j+1}: {sequence['sequence']}\n"
+        buffer += f"    PAM: {sequence['pam']}\n"
+        buffer += f"    Target: {sequence['target'][0]}\n"
+        buffer += f"    Index in FASTA sample: {sequence['index']}\n\n"
+
+        off_targets = check_off_target(sequence, genome, concordance_threshold, allowed_mismatches)
+        replicas = []
+        for off_target in off_targets[:]:
+            if off_target["sequence"] == sequence["sequence"]:
+                replicas.append(off_target)
+                off_targets.remove(off_target)
+
+        CI_off_targets = check_off_target(sequence, CI_genome, concordance_threshold, allowed_mismatches)
+        CI_replicas = []
+        for CI_off_target in CI_off_targets[:]:
+            if CI_off_target["sequence"] == sequence["sequence"]:
+                CI_replicas.append(CI_off_target)
+                CI_off_targets.remove(CI_off_target)
+
+        buffer += f"    Number of exact replica: {len(replicas) + len(CI_replicas)}\n\n"
+        for replica in replicas:
+            buffer += f"        Index in genome main strand: {replica['index'][0]} to {replica['index'][1]}\n"
+        for CI_replica in CI_replicas:
+            buffer += f"        Index in genome secondary strand: {size_genome - CI_replica['index'][0]} to {size_genome - CI_replica['index'][1]}\n"
+        buffer += "\n"
+        
+        buffer += f"    Number of off-targets: {len(off_targets) + len(CI_off_targets)}\n\n"
+        for off_target in off_targets:
+            buffer += f"        Off-target sequence: {off_target['sequence']}\n"
+            buffer += f"        Concordance: {off_target['concordance']}\n"
+            buffer += f"        Index in genome main strand: {off_target['index'][0]} to {off_target['index'][1]}\n\n"
+        for CI_off_target in CI_off_targets:
+            buffer += f"        Off-target sequence: {CI_off_target['sequence']}\n"
+            buffer += f"        Concordance: {CI_off_target['concordance']}\n"
+            buffer += f"        Index in genome secondary strand: {size_genome - CI_off_target['index'][0]} to {size_genome - CI_off_target['index'][1]}\n\n"
+
+    buffer += "---------------------------------------------\n\n"
+
+    return id, len(sequences), buffer
+
 if __name__ == "__main__":
 
     for dir in os.listdir("data/"):
@@ -264,8 +292,8 @@ if __name__ == "__main__":
             genome_files = [file for file in os.listdir(dir_path) if file.endswith(".fa")]
             
             # Repository already analysed
-            if len(results_files) == 1:
-                continue
+            # if len(results_files) == 1:
+            #     continue
 
             # Check if the repository is correctly formatted
             if len(fasta_files) != 1 or len(genome_files) != 1:
@@ -273,5 +301,8 @@ if __name__ == "__main__":
                 break
 
             print(f"Analyzing {dir}...")
-            analyse_fasta_file(dir_path, fasta_files[0], genome_files[0], True, targets, pams, deaminase_window, concordance_threshold, allowed_mismatches)
+            t_start = time.time()
+            analyse_fasta_file(dir_path, fasta_files[0], genome_files[0], True, targets, pams, deaminase_window, concordance_threshold, allowed_mismatches, nb_processes)
+            t_end = time.time()
             print(f"{dir} analysed !")
+            print(f"Time taken: {round(t_end-t_start, 2)} seconds")
