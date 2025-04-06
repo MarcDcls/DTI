@@ -1,6 +1,6 @@
 import os
 import time
-from multiprocessing import Process, Queue, current_process, freeze_support
+from multiprocessing import Process, Queue, cpu_count
 
 try:
     from tqdm import tqdm
@@ -33,7 +33,7 @@ allowed_mismatches = 1
 allowed_gaps = 1
 
 # Number of processes to use for the identification
-nb_processes = 10
+nb_processes = cpu_count()
 
 ######################################################################################
 
@@ -292,8 +292,8 @@ if __name__ == "__main__":
             genome_files = [file for file in os.listdir(dir_path) if file.endswith(".fa")]
             
             # Repository already analysed
-            # if len(results_files) == 1:
-            #     continue
+            if len(results_files) == 1:
+                continue
 
             # Check if the repository is correctly formatted
             if len(fasta_files) != 1 or len(genome_files) != 1:

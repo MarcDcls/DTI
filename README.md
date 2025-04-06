@@ -9,11 +9,12 @@ This package is a tool to identify possible targets of a deaminase in a set of s
 
 ## Installation
 
-Installing the module tqdm allows to vizualise the execution in the terminal:
+Installing the module tqdm allows to vizualise the execution in the terminal, while the module multiprocessing allows to speed up the identification process by using multiple CPU cores. To install these modules, run the following command:
 
 ```bash
-pip install tqdm
+pip install tqdm multiprocessing
 ```
+
 
 ## Usage
 
@@ -33,7 +34,7 @@ Then update the identification parameters in the file `identifier.py`. The param
 - **concordance_threshold** : threshold of concordance for a sequence to be considered as an off-target
 - **allowed_mismatches** : number of mismatches allowed in an off-target
 - **allowed_gaps** : number of gaps allowed in an off-target
-
+- **nb_processes** : number of processes to use for the identification (default is the number of CPU cores available)
 
 Finally run the following command:
 
