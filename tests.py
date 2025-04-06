@@ -69,26 +69,30 @@ if __name__ == "__main__":
         print("All find_sequences tests passed")
 
 
-    offset_test = True
+    offtarget_test = True
     test_candidate = {"index": 9, "target": ["CAG", 0], "pam": "NGG", "sequence": None}
 
     # Testing circularity of the gene sequence
     test_candidate["sequence"] = "CAG123456789012345NGG"
     genome_test = "345NGGXXXXXXCAG123456789012345NGGXXXCAG123456789012"
-    if len(check_off_target(test_candidate, genome_test, 13)) != 2:
+    if len(check_off_target(test_candidate, genome_test, 13, 0)) != 2:
         print("Test 13 failed")
-        offset_test = False
+        offtarget_test = False
+    genome_test = "GGXXXXXXCAG123456789012345NGGXXXCAG123456789012345N"
+    if len(check_off_target(test_candidate, genome_test, 13, 0)) != 2:
+        print("Test 14 failed")
+        offtarget_test = False
 
     # Testing concordance threshold
     test_candidate["sequence"] = "CAG123456789012345NGG"
     genome_test = "345NGGXXXXXX456789012345NGGXXXCAG123456789012"
-    if len(check_off_target(test_candidate, genome_test, 13)) != 1:
-        print("Test 14 failed")
-        offset_test = False
-    genome_test = "345NGGXXXXXXXX3456789012345NGGXXXCAG123456789012"
-    if len(check_off_target(test_candidate, genome_test, 13)) != 2:
+    if len(check_off_target(test_candidate, genome_test, 13, 0)) != 1:
         print("Test 15 failed")
-        offset_test = False
+        offtarget_test = False
+    genome_test = "345NGGXXXXXXXX3456789012345NGGXXXCAG123456789012"
+    if len(check_off_target(test_candidate, genome_test, 13, 0)) != 2:
+        print("Test 16 failed")
+        offtarget_test = False
 
-    if offset_test:
+    if offtarget_test:
         print("All check_off_target tests passed")

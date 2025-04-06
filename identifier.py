@@ -63,7 +63,7 @@ def find_sequences(string: str, targets: list, pams: list, deaminase_window: lis
                             if k == 2:
                                 results.append({"index": i*3,
                                                 "target": target,
-                                                "pam": string[i*3+j:i*3+j+3],
+                                                "pam": pam,
                                                 "sequence": string[i*3:i*3+j+3]})
     return results
 
@@ -104,19 +104,23 @@ def check_off_target(sequence: dict, genome: str, concordance_threshold: int, al
         list: list of off-targets index in the genome sequence
     """
     # Support for the circularity of the genome sequence
-    genome = (genome + genome[:deaminase_window[1]+3]).upper()
+    genome = (genome + genome[:2]).upper()
 
     sequence_length = len(sequence["sequence"])
     off_targets = []
-    for i in range(len(genome)-3):
+    for i in range(len(genome)-2):
         for k in range(3):
             if sequence["pam"][k] == "N":
                 continue
             if genome[i+k] != sequence["pam"][k]:
                 break
             if k == 2:
-                step_off_target(off_targets, sequence["sequence"][:-3], genome[i-sequence_length+3:i], i, concordance_threshold, allowed_mismatches, allowed_gaps, result=genome[i:i+3])
-
+                start = i - sequence_length + 3
+                if start >= 0:
+                    gen_seq = genome[start:i]
+                else:
+                    gen_seq = genome[start-2: -2] + genome[:i]
+                step_off_target(off_targets, sequence["sequence"][:-3], gen_seq, i, concordance_threshold, allowed_mismatches, allowed_gaps, result=genome[i:i+3])
 
     return off_targets
 
