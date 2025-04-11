@@ -58,3 +58,13 @@ Targets are defined as a list containing the following elements:
 The output is a text result file created in the folder containing the fasta and genome files. It contains for each entry of the fasta file the sequences of nucleotides identified as possible targets, as well as the potential off-targets found in the genome file.
 
 **Note:** In an off-target, the mismatches are indicated by "*" and the gaps by "-".
+
+## Example
+
+The repository `data/CDS_mbov_PG45_example` contains a fasta file `CDS_mbov_PG45_example.fasta` and a genome file `Mbov_PG45.fa`. 
+
+To perform the identification, simply run the command: 
+
+```bash
+python identifier.py
+```
