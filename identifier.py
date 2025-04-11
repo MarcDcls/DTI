@@ -10,11 +10,13 @@ except ImportError:
 
 ##################################### PARAMETERS #####################################
 
-# Target codons for the Deaminase with the index of the target nucleotide in the codon
-# Example: ["CAG", 0] means that the target is the 1st nucleotide (C) of the codon CAG
-targets = [["CAG", 0],
-           ["CAA", 0],
-           ["TGA", 1]]
+# Target codons for the deaminase with the index of the target nucleotide in the codon 
+# and the strand on which the deaminase will be used
+# Examples: ["CAG", 0, "coding"] means that the target is the 1st nucleotide (C) of the codon CAG on the coding strand
+#           ["TGA", 1, "complementary"] means that the target is the 2nd nucleotide (G) of the codon TGA, reached via the complementary strand
+targets = [["CAG", 0, "coding"],
+           ["CAA", 0, "coding"],
+           ["TGA", 1, "complementary"]]
 
 # PAMs (Protospacer Adjacent Motifs)
 # N represents any nucleotide
@@ -38,13 +40,15 @@ nb_processes = cpu_count()
 ######################################################################################
 
 
-def find_sequences(string: str, targets: list, pams: list, deaminase_window: list):
+def find_sequences(string: str, target: str, target_id: int, deaminase_strand: str, pams: list, deaminase_window: list):
     """Display every possible sequence of nucleotides in the string beginning by 
     a target codon and having a PAM in the deaminase window.
 
     Args:
         string (str): sequence of nucleotides
-        targets (list): list of target codons with the index of the target nucleotide in the codon
+        target (str): target codon
+        target_id (int): index of the target nucleotide in the target codon 
+        deaminase_strand (str): the strand on which the deaminase wil be used
         pams (list): list of PAM sequences
         deaminase_window (list): upper and lower bounds of the deaminase window
 
@@ -54,22 +58,23 @@ def find_sequences(string: str, targets: list, pams: list, deaminase_window: lis
     results = []
     for i in range(len(string)//3):
         codon = string[i*3:i*3+3]
-        for target in targets:
-            if codon == target[0]:
-                for j in range(deaminase_window[0]+target[1], deaminase_window[1]+1+target[1]):
-                    if i*3+j+3 > len(string):
-                        break
-                    for pam in pams:
-                        for k in range(3):
-                            if pam[k] == "N":
-                                continue
-                            if string[i*3+j+k] != pam[k]:
-                                break
-                            if k == 2:
-                                results.append({"index": i*3,
-                                                "target": target,
-                                                "pam": pam,
-                                                "sequence": string[i*3:i*3+j+3]})
+        if codon == target:
+            for j in range(deaminase_window[0]+target_id, deaminase_window[1]+1+target_id):
+                if i*3+j+3 > len(string):
+                    break
+                for pam in pams:
+                    for k in range(3):
+                        if pam[k] == "N":
+                            continue
+                        if string[i*3+j+k] != pam[k]:
+                            break
+                        if k == 2:
+                            results.append({"index": i*3,
+                                            "CI_index": len(string) - i*3,
+                                            "target": target,
+                                            "pam": pam,
+                                            "sequence": string[i*3:i*3+j+3],
+                                            "deaminase_strand": deaminase_strand})
     return results
 
 def step_off_target(off_targets, target, string, last_index, min_concordance, max_mismatches, max_gaps, concordance = 0, mismatches = 0, gaps = 0, result = ""):
@@ -97,7 +102,7 @@ def step_off_target(off_targets, target, string, last_index, min_concordance, ma
                                 "mismatches": mismatches,
                                 "gaps": gaps})
 
-def check_off_target(sequence: dict, genome: str, concordance_threshold: int, allowed_mismatches: int):
+def check_off_target(sequence: dict, genome: str, concordance_threshold: int, allowed_mismatches: int, allowed_gaps: int):
     """Check if the sequence has off-targets in the genome sequence.
 
     Args:
@@ -223,8 +228,12 @@ def get_CI_sequence(sequence: str):
             complementary += "C"
         elif nucleotide == "g":
             complementary += "c"
-        else:
+        elif nucleotide == "N":
             complementary += "N"
+        elif nucleotide == "n":
+            complementary += "n"
+        else:
+            complementary += nucleotide
     return complementary[::-1]
 
 def worker(input, output):
@@ -235,25 +244,40 @@ def worker(input, output):
 def process_entry(id, entry_name, sample, genome, CI_genome, targets, pams, deaminase_window, concordance_threshold, allowed_mismatches):
     buffer = entry_name + "\n\n"
 
-    sequences = find_sequences(sample, targets, pams, deaminase_window)
+    sequences = []
+    for target in targets:
+        if target[2] == "complementary":
+            CI_sample = get_CI_sequence(sample)
+            CI_target = get_CI_sequence(target[0])
+            sequences += find_sequences(CI_sample, CI_target, 2 - target[1], target[2], pams, deaminase_window)
+        else:
+            sequences += find_sequences(sample, target[0], target[1], target[2], pams, deaminase_window)
 
     buffer += f"Number of potential targets found: {len(sequences)}\n\n"
     size_genome = len(genome)
 
     for j, sequence in enumerate(sequences):
-        buffer += f"Target {j+1}: {sequence['sequence']}\n"
-        buffer += f"    PAM: {sequence['pam']}\n"
-        buffer += f"    Target: {sequence['target'][0]}\n"
-        buffer += f"    Index in FASTA sample: {sequence['index']}\n\n"
+        buffer += f"Target {j+1} on {sequence['deaminase_strand']} strand:\n"
 
-        off_targets = check_off_target(sequence, genome, concordance_threshold, allowed_mismatches)
+        if sequence["deaminase_strand"] == "coding":
+            buffer += f"    Sequence {j+1}: {sequence['sequence']}\n"
+            buffer += f"    PAM: {sequence['pam']}\n"
+            buffer += f"    Target: {sequence['target']}\n"
+            buffer += f"    Index in FASTA sample: {sequence['index']}\n\n"
+        else:
+            buffer += f"    Sequence {j+1}: {get_CI_sequence(sequence['sequence'])} ({sequence['sequence']})\n"
+            buffer += f"    PAM: {get_CI_sequence(sequence['pam'])} ({sequence['pam']})\n"
+            buffer += f"    Target: {get_CI_sequence(sequence['target'])} ({sequence['target']})\n"
+            buffer += f"    Index in FASTA sample: {sequence['CI_index']} ({sequence['index']})\n\n"
+
+        off_targets = check_off_target(sequence, genome, concordance_threshold, allowed_mismatches, allowed_gaps)
         replicas = []
         for off_target in off_targets[:]:
             if off_target["sequence"] == sequence["sequence"]:
                 replicas.append(off_target)
                 off_targets.remove(off_target)
 
-        CI_off_targets = check_off_target(sequence, CI_genome, concordance_threshold, allowed_mismatches)
+        CI_off_targets = check_off_target(sequence, CI_genome, concordance_threshold, allowed_mismatches, allowed_gaps)
         CI_replicas = []
         for CI_off_target in CI_off_targets[:]:
             if CI_off_target["sequence"] == sequence["sequence"]:
@@ -262,20 +286,20 @@ def process_entry(id, entry_name, sample, genome, CI_genome, targets, pams, deam
 
         buffer += f"    Number of exact replica: {len(replicas) + len(CI_replicas)}\n\n"
         for replica in replicas:
-            buffer += f"        Index in genome main strand: {replica['index'][0]} to {replica['index'][1]}\n"
+            buffer += f"        Index in genome coding strand: {replica['index'][0]} to {replica['index'][1]}\n"
         for CI_replica in CI_replicas:
-            buffer += f"        Index in genome secondary strand: {size_genome - CI_replica['index'][0]} to {size_genome - CI_replica['index'][1]}\n"
+            buffer += f"        Index in genome complementary strand: {size_genome - CI_replica['index'][0]} to {size_genome - CI_replica['index'][1]}\n"
         buffer += "\n"
         
         buffer += f"    Number of off-targets: {len(off_targets) + len(CI_off_targets)}\n\n"
         for off_target in off_targets:
             buffer += f"        Off-target sequence: {off_target['sequence']}\n"
             buffer += f"        Concordance: {off_target['concordance']}\n"
-            buffer += f"        Index in genome main strand: {off_target['index'][0]} to {off_target['index'][1]}\n\n"
+            buffer += f"        Index in genome coding strand: {off_target['index'][0]} to {off_target['index'][1]}\n\n"
         for CI_off_target in CI_off_targets:
             buffer += f"        Off-target sequence: {CI_off_target['sequence']}\n"
             buffer += f"        Concordance: {CI_off_target['concordance']}\n"
-            buffer += f"        Index in genome secondary strand: {size_genome - CI_off_target['index'][0]} to {size_genome - CI_off_target['index'][1]}\n\n"
+            buffer += f"        Index in genome complementary strand: {size_genome - CI_off_target['index'][0]} to {size_genome - CI_off_target['index'][1]}\n\n"
 
     buffer += "---------------------------------------------\n\n"
 
