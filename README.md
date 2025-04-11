@@ -42,8 +42,19 @@ Finally run the following command:
 python identifier.py
 ```
 
+## Targets
+
+Targets are defined as a list containing the following elements:
+- The target codon (3 nucleotides) to be identified
+- The index of the target nucleotide in the codon (0, 1 or 2)
+- The strand on which the deaminase will be used (coding or complementary)
+
+**Example 1:** ["CAG", 0, "coding"] means that the target is the 1st nucleotide (C) of the codon CAG. To target this nucleotide, the cytosine deaminase will be used on the coding strand.
+
+**Example 2:** ["TGA", 1, "complementary"] means that the target is the 2nd nucleotide (G) of the codon TGA. To target this nucleotide,  the cytosine deaminase need to target a C nucleotide, and thus will be used on the complementary strand.
+
 ## Output
 
 The output is a text result file created in the folder containing the fasta and genome files. It contains for each entry of the fasta file the sequences of nucleotides identified as possible targets, as well as the potential off-targets found in the genome file.
 
-Note: In an off-target, the mismatches are indicated by "*" and the gaps by "-".
+**Note:** In an off-target, the mismatches are indicated by "*" and the gaps by "-".
